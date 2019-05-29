@@ -1,2 +1,2 @@
 # mental_health
-knife project
+Knowledge Discovery from Health Use Data (KNIFE) project
