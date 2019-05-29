@@ -1,0 +1,328 @@
+---
+title: "R Markdown for KNIFE"
+author: "Haoyuan"
+date: "17 April 2019"
+output:
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 3
+    toc_float:
+      toc_collapsed: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  word_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+library(visNetwork)
+library(bnlearn)
+library(rbmn)
+library(Rgraphviz)
+library(gRain)
+library(RPostgreSQL)
+```
+
+
+# Building Models
+```{r}
+# plot network function
+plot.network <- function(structure, ht = "400px"){
+  nodes.uniq <- unique(c(structure$arcs[,1], structure$arcs[,2]))
+  nodes <- data.frame(id = nodes.uniq,
+                      label = nodes.uniq,
+                      color = "darkturquoise",
+                      shadow = TRUE)
+  
+  edges <- data.frame(from = structure$arcs[,1],
+                      to = structure$arcs[,2],
+                      arrows = "to",
+                      smooth = TRUE,
+                      shadow = TRUE,
+                      color = "black")
+  
+  return(visNetwork(nodes, edges, height = ht, width = "100%"))
+}
+
+
+# Demographic risk factors
+cptage = matrix(c(0.023752969,0.047505938,0.16627078,0.2375297,0.19002375,0.14251782,0.11876485,0.047505938,0.023752969,0.0023752968), ncol = 10, dimnames = list(NULL, c("0-10","11-20","21-30","31-40","41-50","51-60","61-70","71-80","81-90","91-100")))
+
+
+cptethnicity = matrix(c(0.35, 0.30, 0.35), ncol = 3, dimnames = list(NULL, c("1", "4", "others")))
+cptgender = matrix(c(0.50, 0.50), ncol = 2, dimnames = list(NULL, c("female", "male")))
+cptdeprivation = matrix(c(0.20, 0.40, 0.40), ncol = 3, dimnames = list(NULL, c("1", "2", "others")))
+cptsmoking = matrix(c(0.8, 0.2), ncol = 2, dimnames = list(NULL, c("no", "yes")))
+
+# Depression severity
+cptdepSev = c(0.8, 0.1, 0.1, 
+                          0.9, 0.05, 0.05, 
+                          0.95, 0.03, 0.02,
+                          0.7, 0.2, 0.1,
+                          0.7, 0.15, 0.15,
+                          0.85, 0.1, 0.05)
+dim(cptdepSev) = c(3, 3, 2)
+dimnames(cptdepSev) = list("depSev" = c("low", "medium", "high"), "age" =  c("young", "mid_age", "olderly"),"gender" = c("female", "male"))
+
+cptdepressionflag = c(0.999, 0.001,
+                      0.1, 0.9,
+                      0.0, 1.0)
+dim(cptdepressionflag) = c(2, 3)
+dimnames(cptdepressionflag) = list("depressionflag" = c("no", "yes"), "depSev" =  c("low", "medium", "high"))
+
+cptmhclusteredyes = c(1.0, 0.0,
+                      0.93, 0.07,
+                      0.9, 0.1)
+dim(cptmhclusteredyes) = c(2, 3)
+dimnames(cptmhclusteredyes) = list("mhclusteredyes" = c("no", "yes"), "depSev" =  c("low", "medium", "high"))
+
+cptclustercode = c(0,0	,0,	0,	0,	0	,0	,0	,0	,0	,0	,0	,0	,0,	1,
+                   0.055901229,	0.029039599,	0.058079199,	0.181497497,	0.032669549,	0.108898498,	0.054449249,	0.032669549,	0.029039599,	0.072598999,	0.054449249,	0.043559399,	0.0217797,	0.225368685,	0,   
+                   0,0	,0,	0,	0,	0	,0	,0	,0	,0	,0	,0	,0	,0,	1,                 
+                   0.05290706,	0.027484187,	0.054968374	,0.171776168,	0.03091971,	0.103065701,	0.05153285,	0.03091971,	0.027484187,	0.068710467,	0.05153285,	0.04122628,	0.02061314,	0.266859314 ,  0,           
+                   0,0	,0,	0,	0,	0	,0	,0	,0	,0	,0	,0	,0	,0,	1,
+                   0.009790434,	0.00508594,	0.010171879,	0.031787123,	0.005721682,	0.019072274,	0.009536137,	0.005721682,	0.00508594,	0.012714849,	0.009536137	,0.00762891,	0.003814455,	0.864332558,	0)
+
+dim(cptclustercode) = c(15, 3, 2)
+dimnames(cptclustercode) = list("clustercode" = c("others","3","4", "5", "6","7", "8", "10","11", "12", 
+                                                  "13","18", "19", 
+                                                  "99", "no_cluster"), "depSev" =  c("low", "medium", "high"),"mhclusteredyes" = c("no", "yes"))
+
+
+
+# Mental Health Treatment 
+cptmhTx = c(0.85,0.13,0.02,
+                   0.9,0.09,0.01)
+dim(cptmhTx) = c(3, 2)
+dimnames(cptmhTx) = list("mhTx" = c("low", "medium", "high"), "gender" =  c("female", "male"))
+
+cptantidepressantrxflag = c(0.99, 0.01,
+                            0.4, 0.6,
+                            0, 1)
+dim(cptantidepressantrxflag) = c(2, 3)
+dimnames(cptantidepressantrxflag) = list("antidepressantrxflag" = c("no", "yes"), "mhTx" = c("low", "medium", "high"))
+
+
+
+cptIAPTactivity = c(0.999, 0.001,
+                            0.6, 0.4,
+                            0.2, 0.8)
+dim(cptIAPTactivity) = c(2, 3)
+dimnames(cptIAPTactivity) = list("IAPTactivity" = c("no", "yes"), "mhTx" = c("low", "medium", "high"))
+
+
+
+cptpsychinpatient  = c(1, 0,
+                       0.95, 0.05,
+                       0.7, 0.3)
+dim(cptpsychinpatient) = c(2, 3)
+dimnames(cptpsychinpatient) = list("psychinpatient" = c("no", "yes"), "mhTx" = c("low", "medium", "high"))
+
+
+
+# Care for type 2 diabetes
+cptdiabCare = c(0.9, 0.1, 0.0, 
+                 0.8, 0.2, 0.0, 
+                 0.6, 0.3, 0.1,
+                 0.7,0.15,0.15,
+                 0.5, 0.4,0.1,
+                 0.3, 0.5,0.2,
+                 0.75, 0.15,0.1,
+                 0.3, 0.4,0.3,
+                 0.2, 0.3,0.5)
+dim(cptdiabCare) = c(3, 3, 3)
+dimnames(cptdiabCare) = list("diabCare" = c("low", "medium", "high"), "deprivation" =  c("1", "2", "others"),"ethnicity" = c("1", "4", "others"))
+
+cptdiabcareplanflag  = c(0.5,0.5,
+                         0.3, 0.7,
+                         0.1, 0.9)
+dim(cptdiabcareplanflag) = c(2, 3)
+dimnames(cptdiabcareplanflag ) = list("diabcareplanflag" = c("no", "yes"), "diabCare" = c("low", "medium", "high"))
+
+
+cptdiabMDTflag   = c(1.0,0.0,
+                     0.6, 0.4,
+                     0.1, 0.9)
+dim(cptdiabMDTflag) = c(2, 3)
+dimnames(cptdiabMDTflag ) = list("diabMDTflag" = c("no", "yes"), "diabCare" = c("low", "medium", "high"))
+
+cptdiabfootexamflag   = c(0.7,0.3,
+                          0.7, 0.3,
+                          0.0, 1.0)
+dim(cptdiabfootexamflag) = c(2, 3)
+dimnames(cptdiabfootexamflag ) = list("diabfootexamflag" = c("no", "yes"), "diabCare" = c("low", "medium", "high"))
+
+cptdigretinalflag   = c(0.9,0.1,
+                        0.6, 0.4,
+                        0.1, 0.9)
+dim(cptdigretinalflag) = c(2, 3)
+dimnames(cptdigretinalflag ) = list("digretinalflag" = c("no", "yes"), "diabCare" = c("low", "medium", "high"))
+
+
+
+# Mental health Comorbidity
+cptmhC = c(0.6, 0.35, 0.05, 
+                     0.25, 0.35, 0.4, 
+                     0.4, 0.4, 0.2,
+                     0.25, 0.35, 0.4)
+dim(cptmhC) = c(3, 2, 2)
+dimnames(cptmhC) = list("mhC" = c("low", "medium", "high"), "smoking" =  c("no", "yes"),"gender" =  c("female", "male"))
+
+
+cptanxietyflag  = c(0.95,0.05,
+                    0.7, 0.3,
+                    0.5, 0.5)
+dim(cptanxietyflag) = c(2, 3)
+dimnames(cptanxietyflag ) = list("anxietyflag" = c("no", "yes"), "mhC" = c("low", "medium", "high"))
+
+cptmentalhealthflag  = c(1.0,0,
+                         0.997, 0.003,
+                         0.9, 0.1)
+dim(cptmentalhealthflag) = c(2, 3)
+dimnames(cptmentalhealthflag ) = list("mentalhealthflag" = c("no", "yes"), "mhC" = c("low", "medium", "high"))
+
+cptpersonalitydisordersflag  = c(1.0,0,
+                                 0.999, 0.001,
+                                 0.95, 0.05)
+dim(cptpersonalitydisordersflag) = c(2, 3)
+dimnames(cptpersonalitydisordersflag ) = list("personalitydisordersflag" = c("no", "yes"), "mhC" = c("low", "medium", "high"))
+
+
+distalcoholscreenscore = list(coef = matrix(c(3, 10, 20), ncol = 3,
+                                            dimnames = list(c("(Intercept)"), NULL)),
+                              sd = c(10, 20, 20))
+
+
+# Control of type 2 diabetes
+cptdiabCont = c(1,0,0.0,
+                    0.92,0.08,0.0,
+                    0.75,0.25,0.0,
+                    0.5,0.5,0,
+                    0.25,0.75,0,
+                    0.078,0.922,0,
+                    0.01, 0.98,0.01,
+                    0, 0.92,0.08,
+                    0,0.75,0.25,
+                    
+                    
+                    0.75,0.25,0,
+                    0.5,0.5,0,
+                    0.25, 0.75,0,
+                    0.08, 0.92,0,
+                    0.01, 0.98,0.01,
+                    0, 0.92,0.08,
+                    0,0.75,0.25,
+                    0,0.5,0.5,
+                    0,0.25,0.75,
+                    
+                    0.25,0.75,0,
+                    0.08, 0.92,0,
+                    0.01, 0.98,0.01,
+                    0, 0.92,0.08,
+                    0,0.75,0.25,
+                    0,0.5,0.5,
+                    0.25,0.75,0,
+                    0, 0.08, 0.92,
+                    0, 0, 1)
+dim(cptdiabCont) = c(3, 3, 3, 3)
+dimnames(cptdiabCont) = list("diabCont" = c("low", "medium", "high"),
+                                 "diabCare" =  c("low", "medium", "high"),
+                                 "depSev" =  c("low","medium","high"),
+                                 "mhTx" =  c("low", "medium", "high"))
+
+
+disthba1ciffcflag = list(coef = matrix(c(130, 80, 30), ncol = 3,
+                                       dimnames = list(c("(Intercept)"), NULL)),
+                         sd = c(50, 50, 50))
+
+cptdiabeyecompflag  = c(0.7,0.3,
+                        0.9, 0.1,
+                        0.995, 0.005)
+dim(cptdiabeyecompflag) = c(2, 3)
+dimnames(cptdiabeyecompflag ) = list("diabeyecompflag" = c("no", "yes"), 
+                                     "diabCont" = c("low", "medium", "high"))
+
+cptdiablimbcompflag   = c(0.45,0.55,
+                          0.6, 0.4,
+                          0.9, 0.1)
+dim(cptdiablimbcompflag) = c(2, 3)
+dimnames(cptdiablimbcompflag ) = list("diablimbcompflag" = c("no", "yes"), "diabCont" = c("low", "medium", "high"))
+
+
+
+# A&E Attendance
+cptaAndE = c(0.95,0.05,0.0,
+                    0.96,0.04,0.0,
+                    0.97,0.03,0.0,
+                    0.18,0.82,0,
+                    0.26,0.74,0,
+                    0.5,0.5,0,
+                    0, 0.34, 0.66,
+                    0, 0.58,0.42,
+                    0.025,0.95,0.025,
+   
+                    0.82,0.18,0,
+                    0.74,0.26,0,
+                    0.5,0.5,0,
+                    0.05, 0.9,0.05,
+                    0.03, 0.94,0.03,
+                    0.025, 0.95,0.025,
+                    0,0.18,0.82,
+                    0,0.26,0.74,
+                    0,0.5,0.5,
+                    
+                    0.66,0.34,0,
+                    0.42, 0.58,0,
+                    0.025, 0.95,0.025,
+                    0, 0.82,0.18,
+                    0,0.73,0.27,
+                    0,0.5,0.5,
+                    0.0,0.05,0.95,
+                    0, 0.04, 0.96,
+                    0, 0.03, 0.97)
+dim(cptaAndE) = c(3, 3, 3, 3)
+dimnames(cptaAndE) = list("aAndE" = c("low", "medium", "high"),
+                                 "deprivation" =  c("1", "2", "others"),
+                                 "mhC" =  c("low","medium","high"),
+                                 "diabCont" =  c("low", "medium", "high"))
+
+disttotalcost = list(coef = matrix(c(100, 500, 1000), ncol = 3,
+                                            dimnames = list(c("(Intercept)"), NULL)),
+                              sd = c(20, 100, 500))
+disttotalattendances = list(coef = matrix(c(0, 5, 10), ncol = 3,
+                                   dimnames = list(c("(Intercept)"), NULL)),
+                     sd = c(5, 20, 50))
+
+
+# Buidling Network
+net = model2network("[age][gender][ethnicity][deprivation][smoking][depSev|gender:age][depressionflag|depSev][mhclusteredyes|depSev][clustercode|depSev:mhclusteredyes][mhTx|gender][antidepressantrxflag|mhTx][diabCare|deprivation:ethnicity][mhC|smoking:gender][diabCont|mhTx:depSev:diabCare][aAndE|diabCont:mhC:deprivation][IAPTactivity|mhTx][psychinpatient|mhTx][diabcareplanflag|diabCare][diabMDTflag|diabCare][diabfootexamflag|diabCare][digretinalflag|diabCare][diabeyecompflag|diabCont][diablimbcompflag|diabCont][anxietyflag|mhC][mentalhealthflag|mhC][personalitydisordersflag|mhC][hba1ciffcflag|diabCont][alcoholscreenscore|mhC][totalcost|aAndE][totalattendances|aAndE]")
+
+
+# Defining CPT and Functions
+dfit = custom.fit(net, dist = list(age = cptage, gender = cptgender,ethnicity=cptethnicity,deprivation= cptdeprivation,smoking =cptsmoking,depSev = cptdepSev,depressionflag = cptdepressionflag,mhclusteredyes=cptmhclusteredyes,clustercode= cptclustercode,mhTx=cptmhTx,antidepressantrxflag=cptantidepressantrxflag,diabCare=cptdiabCare,mhC=cptmhC,diabCont=cptdiabCont,aAndE=cptaAndE,IAPTactivity=cptIAPTactivity,psychinpatient=cptpsychinpatient,diabcareplanflag=cptdiabcareplanflag,diabMDTflag=cptdiabMDTflag,diabfootexamflag=cptdiabfootexamflag,digretinalflag=cptdigretinalflag,diabeyecompflag=cptdiabeyecompflag,diablimbcompflag=cptdiablimbcompflag,anxietyflag=cptanxietyflag,mentalhealthflag=cptmentalhealthflag,personalitydisordersflag=cptpersonalitydisordersflag,hba1ciffcflag=disthba1ciffcflag,alcoholscreenscore=distalcoholscreenscore,totalcost=disttotalcost,totalattendances=disttotalattendances))
+
+dfit
+plot.network(net)
+
+```
+
+
+
+# Data generation: rejection sampling
+```{r}
+cpdist(dfit, nodes = nodes(dfit),
+       evidence = ((alcoholscreenscore>0)&(alcoholscreenscore<40)&(hba1ciffcflag>4.5)&(hba1ciffcflag<200)&(clustercode!="no_cluster")&(totalcost>0)&(totalattendances>0)),
+       n=100)
+```
+
