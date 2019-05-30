@@ -1,0 +1,74 @@
+---
+title: "PLSPMModel_Haoyuan_RMD"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+library(plspm)
+```
+
+```{r}
+
+mhdata <- data.frame(read.csv("C:/Users/Haoyuan/Desktop/dummy2.csv"))
+mhdata = mhdata[, -1]
+
+Hmisc::describe(mhdata) 
+
+```
+
+```{r}
+
+#inner (latent) model:
+#            MC DC MT DS PC AE
+demRisk =  c(0, 0, 0, 0, 0, 0, 0)
+mhComorb = c(1, 0, 0, 0, 0, 0, 0)
+diabCare = c(1, 0, 0, 0, 0, 0, 0)
+mhTX =     c(0, 0, 0, 0, 0, 0 ,0)
+depSev  =  c(1, 0, 0, 0, 0, 0, 0)
+poorCont = c(0, 0, 1, 1, 1, 0, 0)
+aAndE =    c(1, 1, 0, 0, 0, 1, 0)
+mh_path = rbind(demRisk, mhComorb, diabCare, mhTX, depSev, poorCont, aAndE)
+innerplot(mh_path)
+
+
+#outer model:
+mh_blocks = list(
+  c("age", "gender", "ethnicity", "deprivation", "smoking"),
+  c("alcoholscreenscore", "personalitydisordersflag", "mentalhealthflag", "anxietyflag"),
+  c("diabcareplanflag", "diabMDTflag", "diabfootexamflag","digretinalflag"),
+  c("antidepressantrxflag", "IAPTactivity", "psychinpatient"),
+  c("depressionflag", "mhclusteredyes"),
+  c("hba1ciffcflag", "diabeyecompflag", "diablimbcompflag"),
+  c("totalcost", "totalattendances")
+)
+
+
+mh_mode = c("B", rep("A",6))
+mh_pls = plspm(mhdata, mh_path, mh_blocks, modes=mh_mode)
+
+# outer model
+plot(mh_pls, what="loadings")
+
+```
+
+
+```{r}
+# inner model
+plot(mh_pls)
+
+```
+
+
+```{r}
+summary(mh_pls)
+mh_pls$gof
+
+```
+
+We can see the performance is quite bad,further adjustment about the hypothesis is needed...tbc

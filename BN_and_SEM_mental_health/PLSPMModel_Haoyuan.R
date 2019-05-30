@@ -1,42 +1,4 @@
-rm(list=ls())
-
-
-
-mhdata$otherEthnic = 1- mhdata$whiteEthnic
-
-mh_blocks3 = list(
-  c("depressionFlag.fixed", "depressionCluster"),
-  c("antiDepressantRx", "iaptActivity"),
-  c("diabCareplanFlag.fixed", "diabMDTflag.fixed", "diabFootExam.fixed", "digRetinalflag.fixed"),
-  c("hba1cIfccFlag.fixed", "diabEyeCompFlag.fixed", "diablimbCompFlag.fixed"),
-  c("age", "gender", "otherEthnic", "deprivation", "smoking"),
-  c("totalattendances", "totalcost"),
-  c("auditScreen", "anxiety.fixed")
-)
-
-# This fits the model
-
-mh_pls = plspm(mhdata, mh_path, mh_blocks3, modes=NULL)
-
-summary(mh_pls)
-plot(mh_pls)
-
-plot(mh_pls, what="loadings")
-
-
-gpa_perm = plspm.groups(mh_pls, mhdata$IAPTactivity, method = "permutation")
-
-
-mh_pls = plspm(mhdata, mh_path, mh_blocks2, modes=NULL, scaling=NULL, scaled=TRUE)
-
-
-
-
-
-
-
-
-
+library(tidyverse)
 library(plspm)
 mhdata <- data.frame(read.csv("C:/Users/Haoyuan/Desktop/dummy2.csv"))
 mhdata = mhdata[, -1]
@@ -141,3 +103,34 @@ plot(gpa_perm2, box.size = 0.14)
 plot(gpa_perm3, box.size = 0.14)
 
 gpa_perm3$gof
+
+
+
+
+
+# rm(list=ls())
+# 
+# mhdata$otherEthnic = 1- mhdata$whiteEthnic
+# 
+# mh_blocks3 = list(
+#   c("depressionFlag.fixed", "depressionCluster"),
+#   c("antiDepressantRx", "iaptActivity"),
+#   c("diabCareplanFlag.fixed", "diabMDTflag.fixed", "diabFootExam.fixed", "digRetinalflag.fixed"),
+#   c("hba1cIfccFlag.fixed", "diabEyeCompFlag.fixed", "diablimbCompFlag.fixed"),
+#   c("age", "gender", "otherEthnic", "deprivation", "smoking"),
+#   c("totalattendances", "totalcost"),
+#   c("auditScreen", "anxiety.fixed")
+# )
+# 
+# # This fits the model
+# 
+# mh_pls = plspm(mhdata, mh_path, mh_blocks3, modes=NULL)
+# 
+# summary(mh_pls)
+# plot(mh_pls)
+# 
+# plot(mh_pls, what="loadings")
+# 
+# gpa_perm = plspm.groups(mh_pls, mhdata$IAPTactivity, method = "permutation")
+# 
+# mh_pls = plspm(mhdata, mh_path, mh_blocks2, modes=NULL, scaling=NULL, scaled=TRUE)
